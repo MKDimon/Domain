@@ -163,24 +163,26 @@ class UpdateNotifier extends Notifier<UpdateState> {
     final currentPid = pid;
     final appDir = _appDir;
     final sep = Platform.pathSeparator;
-    final batPath = '$appDir${sep}update.bat';
+    final ps1Path = '$appDir${sep}update.ps1';
 
     final script = '''
-@echo off
-:wait
-tasklist /FI "PID eq $currentPid" 2>NUL | find /I "$currentPid" >NUL
-if not errorlevel 1 (
-    timeout /t 1 /nobreak > nul
-    goto wait
-)
-xcopy /s /y /q "$_stagingDir${sep}*" "$appDir${sep}"
-rmdir /s /q "$_stagingDir"
-start "" "$appDir${sep}domain_app.exe"
-del "%~f0"
+\$ErrorActionPreference = 'SilentlyContinue'
+while (Get-Process -Id $currentPid -ErrorAction SilentlyContinue) {
+    Start-Sleep -Seconds 1
+}
+Copy-Item -Path '$_stagingDir${sep}*' -Destination '$appDir' -Recurse -Force
+Remove-Item -Path '$_stagingDir' -Recurse -Force
+Start-Process '$appDir${sep}domain_app.exe'
+Remove-Item \$MyInvocation.MyCommand.Source -Force
 ''';
 
-    await File(batPath).writeAsString(script);
-    await Process.start('cmd', ['/c', batPath], mode: ProcessStartMode.detached);
+    await File(ps1Path).writeAsString(script);
+    await Process.start('powershell', [
+      '-WindowStyle', 'Hidden',
+      '-NoProfile',
+      '-ExecutionPolicy', 'Bypass',
+      '-File', ps1Path,
+    ], mode: ProcessStartMode.detached);
     await TrayService().exitApp();
   }
 }

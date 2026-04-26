@@ -56,10 +56,9 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       }
       final results = await Future.wait(futures);
       final popularRaw = results[0] as List<Community>;
-      final enriched = await api.enrichListWithCounts(popularRaw);
       if (mounted) {
         setState(() {
-          _popular = enriched;
+          _popular = popularRaw;
           _categories = results[1] as List<Category>;
           if (isAuthed && results.length > 2) {
             _myCommunities = results[2] as List<Community>;
@@ -69,7 +68,13 @@ class _MainScreenState extends ConsumerState<MainScreen> {
           _loaded = true;
         });
       }
-    } catch (_) {
+      // enrich popular counts in background — don't block the main UI
+      api.enrichListWithCounts(popularRaw).then((enriched) {
+        if (mounted) setState(() => _popular = enriched);
+      }).catchError((_) {});
+    } catch (e) {
+      // ignore: avoid_print
+      print('[main] _load failed: $e');
       if (mounted) setState(() => _loaded = true);
     }
   }
@@ -85,9 +90,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       return Center(child: CircularProgressIndicator(color: c.accent));
     }
 
-    final showAuthed = auth.isAuthenticated && _myCommunities.isNotEmpty;
-
-    if (showAuthed) {
+    if (auth.isAuthenticated) {
       return _AuthedHome(
         auth: auth, c: c, theme: theme,
         myCommunities: _myCommunities,
@@ -149,34 +152,37 @@ class _AuthedHome extends StatelessWidget {
           _WelcomeBar(user: user, ownedCount: ownedCount, isAdmin: user.isAdmin, isPro: user.isPro, c: c),
           const SizedBox(height: 28),
 
-          LayoutBuilder(builder: (ctx, box) {
-            if (box.maxWidth >= 768) {
-              return IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(child: _MyCommunitiesBlock(communities: myCommunities, c: c)),
-                    const SizedBox(width: 16),
-                    Expanded(child: _FavoritesBlock(c: c, communities: myCommunities)),
-                  ],
-                ),
-              );
-            }
-            return Column(children: [
-              _MyCommunitiesBlock(communities: myCommunities, c: c),
-              const SizedBox(height: 16),
-              _FavoritesBlock(c: c, communities: myCommunities),
-            ]);
-          }),
-          const SizedBox(height: 20),
+          if (myCommunities.isNotEmpty) ...[
+            LayoutBuilder(builder: (ctx, box) {
+              if (box.maxWidth >= 768) {
+                return IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: _MyCommunitiesBlock(communities: myCommunities, c: c)),
+                      const SizedBox(width: 16),
+                      Expanded(child: _FavoritesBlock(c: c, communities: myCommunities)),
+                    ],
+                  ),
+                );
+              }
+              return Column(children: [
+                _MyCommunitiesBlock(communities: myCommunities, c: c),
+                const SizedBox(height: 16),
+                _FavoritesBlock(c: c, communities: myCommunities),
+              ]);
+            }),
+            const SizedBox(height: 20),
+          ] else ...[
+            _EmptyCommunitiesCard(c: c),
+            const SizedBox(height: 20),
+          ],
 
-          // ── Row 2: Recently visited ──
           if (recentVisits.isNotEmpty) ...[
             _RecentVisitsBlock(visits: recentVisits, c: c),
             const SizedBox(height: 20),
           ],
 
-          // ── Row 3: Activity feed ──
           if (notifications.isNotEmpty) ...[
             _ActivityBlock(notifications: notifications, c: c, communities: myCommunities),
             const SizedBox(height: 20),
@@ -239,11 +245,7 @@ class _WelcomeBar extends StatelessWidget {
                 children: [
                   TextSpan(
                     text: displayName,
-                    style: TextStyle(
-                      foreground: Paint()..shader = LinearGradient(
-                        colors: [c.accent, const Color(0xFF8B5CF6)],
-                      ).createShader(const Rect.fromLTWH(0, 0, 200, 30)),
-                    ),
+                    style: _gradientTextStyle(c) ?? TextStyle(fontSize: 28, fontWeight: FontWeight.w700, color: c.accent),
                   ),
                 ],
               )),
@@ -287,6 +289,82 @@ class _WelcomeBar extends StatelessWidget {
       ],
     );
   }
+}
+
+TextStyle? _gradientTextStyle(ColorSet c) {
+  try {
+    return TextStyle(
+      foreground: Paint()..shader = LinearGradient(
+        colors: [c.accent, const Color(0xFF8B5CF6)],
+      ).createShader(const Rect.fromLTWH(0, 0, 200, 30)),
+    );
+  } catch (_) {
+    return null;
+  }
+}
+
+class _EmptyCommunitiesCard extends StatelessWidget {
+  final ColorSet c;
+  const _EmptyCommunitiesCard({required this.c});
+
+  @override
+  Widget build(BuildContext context) {
+    return _BlockCard(
+      c: c,
+      icon: Icons.rocket_launch_outlined,
+      title: 'Начало работы',
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Column(
+          children: [
+            Text('У вас пока нет сообществ', style: TextStyle(fontSize: 15, color: c.text)),
+            const SizedBox(height: 8),
+            Text('Создайте своё или найдите интересные', style: TextStyle(fontSize: 13, color: c.textSecondary)),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _ActionChip(label: 'Создать', icon: Icons.add, onTap: () => context.goNamed('create-community'), c: c, filled: true),
+                const SizedBox(width: 12),
+                _ActionChip(label: 'Найти', icon: Icons.search, onTap: () => context.goNamed('explore'), c: c, filled: false),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  final ColorSet c;
+  final bool filled;
+  const _ActionChip({required this.label, required this.icon, required this.onTap, required this.c, required this.filled});
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(8),
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: filled ? c.accent : Colors.transparent,
+        border: Border.all(color: filled ? c.accent : c.border),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: filled ? Colors.white : c.textSecondary),
+          const SizedBox(width: 8),
+          Text(label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: filled ? Colors.white : c.text)),
+        ],
+      ),
+    ),
+  );
 }
 
 class _MyCommunitiesBlock extends StatelessWidget {

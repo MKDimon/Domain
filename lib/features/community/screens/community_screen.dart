@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,6 +26,7 @@ import '../../voice/widgets/floating_call_widget.dart';
 import '../../voice/widgets/voice_room_view.dart';
 import '../widgets/settings_panel.dart';
 import '../widgets/report_dialog.dart';
+import '../widgets/create_page_dialog.dart';
 import '../../../core/shell/shell_state.dart';
 
 class CommunityScreen extends ConsumerStatefulWidget {
@@ -52,6 +54,7 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
   bool _canManageMembers = false;
   bool _sidebarOpen = false;
   String _activeView = 'page'; // 'page' | 'moderation' | 'feedback'
+  Timer? _pagesRefreshTimer;
 
   String? get _selectedPageId {
     if (_currentPageId == null || _currentPageId == _mainPageId) return null;
@@ -63,10 +66,12 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
     super.initState();
     _currentPageId = widget.pageId;
     _load();
+    _pagesRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) => _refreshPages());
   }
 
   @override
   void dispose() {
+    _pagesRefreshTimer?.cancel();
     ref.read(shellCommunityProvider.notifier).state = null;
     super.dispose();
   }
@@ -122,6 +127,20 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
     } catch (_) {
       if (mounted) setState(() { _subPage = null; _subPageSections = []; });
     }
+  }
+
+  Future<void> _refreshPages() async {
+    if (_community == null || _loading) return;
+    try {
+      final api = CommunitiesApi(ref.read(apiClientProvider));
+      final pages = await api.getPages(_community!.id);
+      if (!mounted) return;
+      final oldIds = _pages.map((p) => p.id).toSet();
+      final newIds = pages.map((p) => p.id).toSet();
+      if (oldIds.length != newIds.length || !oldIds.containsAll(newIds)) {
+        setState(() => _pages = pages);
+      }
+    } catch (_) {}
   }
 
   Future<void> _load() async {
@@ -310,6 +329,21 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
     );
   }
 
+  Future<void> _showCreatePage(ColorSet c) async {
+    if (_community == null) return;
+    final created = await CreatePageDialog.show(
+      context,
+      communityId: _community!.id,
+      communitySlug: widget.slug,
+      apiClient: ref.read(apiClientProvider),
+      c: c,
+      canSetVisibility: _isOwner || _isStaff,
+    );
+    if (created == true) {
+      await _load();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -395,6 +429,7 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
                               isMember: _isMember,
                               onLeave: _leaveCommunity,
                               onReport: _reportCommunity,
+                              onCreatePage: () => _showCreatePage(c),
                             ),
                             Expanded(child: Padding(
                               padding: const EdgeInsets.only(bottom: 12, right: 12),
@@ -425,6 +460,7 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
                   isMember: _isMember,
                   onLeave: _leaveCommunity,
                   onReport: _reportCommunity,
+                  onCreatePage: () => _showCreatePage(c),
                 ),
               ),
             ],
@@ -620,6 +656,7 @@ class _CommunitySidebar extends StatefulWidget {
   final bool isMember;
   final VoidCallback? onLeave;
   final VoidCallback? onReport;
+  final VoidCallback? onCreatePage;
 
   const _CommunitySidebar({
     required this.comm, required this.pages, required this.c,
@@ -629,6 +666,7 @@ class _CommunitySidebar extends StatefulWidget {
     this.canCreatePages = false, this.onPageSelect,
     this.activeView = 'page', this.onViewSelect,
     this.isMember = false, this.onLeave, this.onReport,
+    this.onCreatePage,
   });
 
   @override
@@ -768,10 +806,10 @@ class _CommunitySidebarState extends State<_CommunitySidebar> {
               // Create page
               if (widget.canCreatePages)
                 _SidebarNavItem(
-                  icon: Icons.add_circle_outline, label: l.createCommunityButton, c: c,
+                  icon: Icons.add_circle_outline, label: 'Создать страницу', c: c,
                   onTap: () {
                     widget.onClose?.call();
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('В разработке'), duration: Duration(seconds: 2)));
+                    widget.onCreatePage?.call();
                   },
                 ),
 

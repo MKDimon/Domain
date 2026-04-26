@@ -52,8 +52,9 @@ class _BillingSuccessScreenState extends ConsumerState<BillingSuccessScreen> {
 
       if (status.isSucceeded) {
         _pollTimer?.cancel();
-        ref.read(authProvider.notifier).refreshProfile();
-        Future.delayed(const Duration(milliseconds: 2500), () {
+        await ref.read(authProvider.notifier).refreshProfile();
+        if (!mounted) return;
+        Future.delayed(const Duration(milliseconds: 1500), () {
           if (mounted) context.go('/profile');
         });
         return;

@@ -7,6 +7,7 @@ class User {
   final String avatarUrl;
   final String bio;
   final bool emailVerified;
+  final String createdAt;
   final Subscription? subscription;
 
   User({
@@ -18,6 +19,7 @@ class User {
     this.avatarUrl = '',
     this.bio = '',
     this.emailVerified = false,
+    this.createdAt = '',
     this.subscription,
   });
 
@@ -43,6 +45,7 @@ class User {
     avatarUrl: json['avatar_url'] as String? ?? '',
     bio: json['bio'] as String? ?? '',
     emailVerified: json['email_verified'] as bool? ?? false,
+    createdAt: json['created_at'] as String? ?? '',
     subscription: json['subscription'] != null
         ? Subscription.fromJson(json['subscription'] as Map<String, dynamic>)
         : null,
@@ -57,6 +60,7 @@ class User {
     'avatar_url': avatarUrl,
     'bio': bio,
     'email_verified': emailVerified,
+    'created_at': createdAt,
     if (subscription != null) 'subscription': subscription!.toJson(),
   };
 
@@ -69,6 +73,7 @@ class User {
     String? avatarUrl,
     String? bio,
     bool? emailVerified,
+    String? createdAt,
     Subscription? subscription,
   }) => User(
     id: id ?? this.id,
@@ -79,6 +84,7 @@ class User {
     avatarUrl: avatarUrl ?? this.avatarUrl,
     bio: bio ?? this.bio,
     emailVerified: emailVerified ?? this.emailVerified,
+    createdAt: createdAt ?? this.createdAt,
     subscription: subscription ?? this.subscription,
   );
 }

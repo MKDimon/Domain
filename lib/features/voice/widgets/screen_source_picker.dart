@@ -50,12 +50,10 @@ class _ScreenSourcePickerState extends State<ScreenSourcePicker> {
       );
       if (!mounted) return;
 
-      // Listen for async thumbnail updates
       _thumbSub = desktopCapturer.onThumbnailChanged.stream.listen((_) {
         if (mounted) setState(() {});
       });
 
-      // Also periodically rebuild to pick up late thumbnails
       _refreshTimer = Timer.periodic(const Duration(seconds: 1), (_) {
         if (mounted) setState(() {});
       });

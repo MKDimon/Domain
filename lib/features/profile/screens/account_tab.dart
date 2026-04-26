@@ -1,9 +1,11 @@
 import 'dart:io' show File;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import '../../../core/api/api_client.dart';
 import '../../../data/api/users_api.dart';
 import '../../../data/api/uploads_api.dart';
+import '../../../data/api/dm_api.dart';
 import '../../../data/models/user.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../core/utils/avatar_color.dart';
@@ -33,6 +35,11 @@ class _AccountTabState extends ConsumerState<AccountTab> {
   bool _avatarUploading = false;
   int _avatarProgress = 0;
 
+  String _dmPolicy = 'everyone';
+  bool _dmPolicySaving = false;
+  String _presenceVisibility = 'visible';
+  bool _presenceSaving = false;
+
   @override
   void initState() {
     super.initState();
@@ -61,12 +68,15 @@ class _AccountTabState extends ConsumerState<AccountTab> {
     setState(() { _loading = true; _error = null; });
     try {
       final api = UsersApi(ref.read(apiClientProvider));
+      final dmApi = DmApi(ref.read(apiClientProvider));
       _profile = await api.getMe();
       _usernameController.text = _profile!.username;
       _displayNameController.text = _profile!.displayName ?? '';
       _emailController.text = _profile!.email;
       _bioController.text = _profile!.bio;
       _avatarUrl = _profile!.avatarUrl;
+      try { _dmPolicy = await dmApi.getPolicy(); } catch (_) {}
+      try { _presenceVisibility = await api.getPresenceVisibility(); } catch (_) {}
     } catch (e) {
       _error = 'Не удалось загрузить профиль';
     } finally {
@@ -138,6 +148,42 @@ class _AccountTabState extends ConsumerState<AccountTab> {
       }
     } finally {
       if (mounted) setState(() => _avatarUploading = false);
+    }
+  }
+
+  Future<void> _setDmPolicy(String next) async {
+    if (_dmPolicy == next || _dmPolicySaving) return;
+    final prev = _dmPolicy;
+    setState(() { _dmPolicy = next; _dmPolicySaving = true; });
+    try {
+      await DmApi(ref.read(apiClientProvider)).setPolicy(next);
+    } catch (_) {
+      if (mounted) setState(() => _dmPolicy = prev);
+    } finally {
+      if (mounted) setState(() => _dmPolicySaving = false);
+    }
+  }
+
+  Future<void> _setPresenceVisibility(String next) async {
+    if (_presenceVisibility == next || _presenceSaving) return;
+    final prev = _presenceVisibility;
+    setState(() { _presenceVisibility = next; _presenceSaving = true; });
+    try {
+      await UsersApi(ref.read(apiClientProvider)).setPresenceVisibility(next);
+    } catch (_) {
+      if (mounted) setState(() => _presenceVisibility = prev);
+    } finally {
+      if (mounted) setState(() => _presenceSaving = false);
+    }
+  }
+
+  String _formatMemberSince() {
+    if (_profile?.createdAt.isEmpty ?? true) return '';
+    try {
+      final dt = DateTime.parse(_profile!.createdAt);
+      return DateFormat('d MMMM y', 'ru').format(dt);
+    } catch (_) {
+      return '';
     }
   }
 
@@ -238,6 +284,59 @@ class _AccountTabState extends ConsumerState<AccountTab> {
               ),
             ],
           )),
+          const SizedBox(height: 16),
+
+          // DM Policy card
+          _card(theme, child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Кто может вам писать', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600, color: theme.textTheme.bodyLarge?.color)),
+              const SizedBox(height: 4),
+              Text(
+                '«Только друзья» отправляет сообщения от незнакомцев во вкладку «Запросы», а не в основные сообщения.',
+                style: TextStyle(fontSize: 13, color: theme.textTheme.bodySmall?.color),
+              ),
+              const SizedBox(height: 12),
+              _radioGroup(_dmPolicy, _dmPolicySaving, _setDmPolicy, theme, [
+                ('Все', 'everyone'),
+                ('Только друзья', 'friends'),
+              ]),
+            ],
+          )),
+          const SizedBox(height: 16),
+
+          // Presence Visibility card
+          _card(theme, child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Статус онлайн', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600, color: theme.textTheme.bodyLarge?.color)),
+              const SizedBox(height: 4),
+              Text(
+                'Если скрыть, другие пользователи всегда будут видеть вас как оффлайн. Время последнего визита тоже не будет видно.',
+                style: TextStyle(fontSize: 13, color: theme.textTheme.bodySmall?.color),
+              ),
+              const SizedBox(height: 12),
+              _radioGroup(_presenceVisibility, _presenceSaving, _setPresenceVisibility, theme, [
+                ('Показывать', 'visible'),
+                ('Скрыть', 'hidden'),
+              ]),
+            ],
+          )),
+          const SizedBox(height: 16),
+
+          // Meta row
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                if (_formatMemberSince().isNotEmpty)
+                  Text('Участник с: ${_formatMemberSince()}', style: TextStyle(fontSize: 13, color: theme.textTheme.bodySmall?.color)),
+                if (_profile!.emailVerified == false)
+                  Text('Email не подтверждён', style: TextStyle(fontSize: 13, color: Colors.amber.shade700)),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -278,6 +377,31 @@ class _AccountTabState extends ConsumerState<AccountTab> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _radioGroup(String current, bool saving, Future<void> Function(String) onChange, ThemeData theme, List<(String label, String value)> options) {
+    return Wrap(
+      spacing: 16,
+      children: options.map((opt) => InkWell(
+        onTap: saving ? null : () => onChange(opt.$2),
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                current == opt.$2 ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                size: 20,
+                color: current == opt.$2 ? theme.colorScheme.primary : theme.textTheme.bodySmall?.color,
+              ),
+              const SizedBox(width: 8),
+              Text(opt.$1, style: TextStyle(fontSize: 14, color: theme.textTheme.bodyLarge?.color)),
+            ],
+          ),
+        ),
+      )).toList(),
     );
   }
 }

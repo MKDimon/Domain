@@ -16,6 +16,11 @@ class VoiceSettings {
   final String outputDeviceId; // '' = system default
   final double vadSensitivity; // RMS threshold 0.002-0.3
   final bool autoVad; // Discord-style adaptive threshold
+  final String shareResolution; // 'auto' | '1080' | '720' | '480'
+  final int shareFramerate; // 15 | 30 | 60
+  final bool shareSystemAudio;
+  final String shareSurface; // 'auto' | 'monitor' | 'window' | 'browser'
+  final bool sharePreview;
 
   const VoiceSettings({
     this.activationMode = 'vad',
@@ -31,6 +36,11 @@ class VoiceSettings {
     this.outputDeviceId = '',
     this.vadSensitivity = 0.01,
     this.autoVad = true,
+    this.shareResolution = 'auto',
+    this.shareFramerate = 30,
+    this.shareSystemAudio = false,
+    this.shareSurface = 'auto',
+    this.sharePreview = false,
   });
 
   VoiceSettings copyWith({
@@ -47,6 +57,11 @@ class VoiceSettings {
     String? outputDeviceId,
     double? vadSensitivity,
     bool? autoVad,
+    String? shareResolution,
+    int? shareFramerate,
+    bool? shareSystemAudio,
+    String? shareSurface,
+    bool? sharePreview,
   }) => VoiceSettings(
     activationMode: activationMode ?? this.activationMode,
     pttKey: pttKey ?? this.pttKey,
@@ -61,6 +76,11 @@ class VoiceSettings {
     outputDeviceId: outputDeviceId ?? this.outputDeviceId,
     vadSensitivity: vadSensitivity ?? this.vadSensitivity,
     autoVad: autoVad ?? this.autoVad,
+    shareResolution: shareResolution ?? this.shareResolution,
+    shareFramerate: shareFramerate ?? this.shareFramerate,
+    shareSystemAudio: shareSystemAudio ?? this.shareSystemAudio,
+    shareSurface: shareSurface ?? this.shareSurface,
+    sharePreview: sharePreview ?? this.sharePreview,
   );
 
   bool get isPtt => activationMode == 'ptt';
@@ -87,6 +107,11 @@ class VoiceSettingsNotifier extends StateNotifier<VoiceSettings> {
       outputDeviceId: p.getString('voice.outputDeviceId') ?? '',
       vadSensitivity: p.getDouble('voice.vadSensitivity') ?? 0.01,
       autoVad: p.getBool('voice.autoVad') ?? true,
+      shareResolution: p.getString('voice.shareResolution') ?? '720',
+      shareFramerate: p.getInt('voice.shareFramerate') ?? 30,
+      shareSystemAudio: p.getBool('voice.shareSystemAudio') ?? false,
+      shareSurface: p.getString('voice.shareSurface') ?? 'auto',
+      sharePreview: p.getBool('voice.sharePreview') ?? false,
     );
   }
 
@@ -105,6 +130,11 @@ class VoiceSettingsNotifier extends StateNotifier<VoiceSettings> {
     p.setString('voice.outputDeviceId', state.outputDeviceId);
     p.setDouble('voice.vadSensitivity', state.vadSensitivity);
     p.setBool('voice.autoVad', state.autoVad);
+    p.setString('voice.shareResolution', state.shareResolution);
+    p.setInt('voice.shareFramerate', state.shareFramerate);
+    p.setBool('voice.shareSystemAudio', state.shareSystemAudio);
+    p.setString('voice.shareSurface', state.shareSurface);
+    p.setBool('voice.sharePreview', state.sharePreview);
   }
 
   void setActivationMode(String mode) {
@@ -169,6 +199,31 @@ class VoiceSettingsNotifier extends StateNotifier<VoiceSettings> {
 
   void setAutoVad(bool v) {
     state = state.copyWith(autoVad: v);
+    _save();
+  }
+
+  void setShareResolution(String v) {
+    state = state.copyWith(shareResolution: v);
+    _save();
+  }
+
+  void setShareFramerate(int v) {
+    state = state.copyWith(shareFramerate: v);
+    _save();
+  }
+
+  void setShareSystemAudio(bool v) {
+    state = state.copyWith(shareSystemAudio: v);
+    _save();
+  }
+
+  void setShareSurface(String v) {
+    state = state.copyWith(shareSurface: v);
+    _save();
+  }
+
+  void setSharePreview(bool v) {
+    state = state.copyWith(sharePreview: v);
     _save();
   }
 

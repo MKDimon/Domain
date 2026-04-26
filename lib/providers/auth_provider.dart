@@ -53,6 +53,7 @@ class AuthNotifier extends Notifier<AuthState> {
   late final SecureStorageService _storage;
   late final PreferencesService _prefs;
   late final WsManager _wsManager;
+  Timer? _profileRefreshTimer;
 
   @override
   AuthState build() {
@@ -111,6 +112,7 @@ class AuthNotifier extends Notifier<AuthState> {
         _persistUser(profile);
         _connectWs(token, profile);
         _installUnauthorizedHandler();
+        _startPeriodicRefresh();
         state = state.copyWith(user: profile, isRestoringSession: false);
         final hasRefresh = await _storage.getRefreshToken();
         if (hasRefresh == null) {
@@ -147,6 +149,7 @@ class AuthNotifier extends Notifier<AuthState> {
       _persistUser(profile);
       _connectWs(newToken!, profile);
       _installUnauthorizedHandler();
+      _startPeriodicRefresh();
       state = state.copyWith(user: profile, isRestoringSession: false);
     } catch (e) {
       await _storage.clearTokens();
@@ -172,6 +175,7 @@ class AuthNotifier extends Notifier<AuthState> {
       _persistUser(profile);
       _connectWs(token, profile);
       _installUnauthorizedHandler();
+      _startPeriodicRefresh();
       state = state.copyWith(user: profile, isLoading: false);
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
@@ -217,6 +221,7 @@ class AuthNotifier extends Notifier<AuthState> {
     print('[auth] logout() called');
     // ignore: avoid_print
     print(StackTrace.current.toString().split('\n').take(5).join('\n'));
+    _stopPeriodicRefresh();
     _wsManager.disconnect();
     _authApi.logout();
     await _storage.clearTokens();
@@ -231,6 +236,16 @@ class AuthNotifier extends Notifier<AuthState> {
       _persistUser(profile);
       state = state.copyWith(user: profile);
     } catch (_) {}
+  }
+
+  void _startPeriodicRefresh() {
+    _profileRefreshTimer?.cancel();
+    _profileRefreshTimer = Timer.periodic(const Duration(seconds: 120), (_) => refreshProfile());
+  }
+
+  void _stopPeriodicRefresh() {
+    _profileRefreshTimer?.cancel();
+    _profileRefreshTimer = null;
   }
 
   Future<void> resendVerification() => _authApi.resendVerification();

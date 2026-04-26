@@ -189,6 +189,7 @@ class VoiceSessionNotifier extends StateNotifier<VoiceSessionState> {
   MediaStream? _localStream;
   MediaStream? _cameraStream;
   MediaStream? _screenStream;
+  String? _screenSourceId;
   final Map<int, _PeerBundle> _peers = {};
   final Map<int, MediaStreamTrack> _remoteTracks = {};
   final Map<int, MediaStreamTrack> _remoteCameraTracks = {};
@@ -455,7 +456,6 @@ class VoiceSessionNotifier extends StateNotifier<VoiceSessionState> {
     }
     if (_screenStream != null) {
       for (final t in _screenStream!.getTracks()) { try { await t.stop(); } catch (_) {} }
-      try { await _screenStream!.dispose(); } catch (_) {}
       _screenStream = null;
     }
     for (final uid in _remoteRenderers.keys.toList()) { _disposeRemoteRenderer(uid); }
@@ -1173,15 +1173,19 @@ class VoiceSessionNotifier extends StateNotifier<VoiceSessionState> {
   }
 
   /// Start screen share with a specific source ID (from ScreenSourcePicker).
-  Future<void> startScreenShareWithSource(String sourceId) async {
+  Future<void> startScreenShareWithSource(String sourceId, {VoiceSettings? settings}) async {
     if (!state.inCall || _screenStream != null) return;
+    _screenSourceId = sourceId;
+    final fps = settings?.shareFramerate.toDouble() ?? 30.0;
+    final res = settings?.shareResolution ?? 'auto';
+    final mandatory = <String, dynamic>{'frameRate': fps};
     // ignore: avoid_print
-    print('[voice] startScreenShare sourceId=$sourceId');
+    print('[voice] startScreenShare sourceId=$sourceId fps=$fps res=$res mandatory=$mandatory');
     try {
       _screenStream = await navigator.mediaDevices.getDisplayMedia(<String, dynamic>{
         'video': {
           'deviceId': {'exact': sourceId},
-          'mandatory': {'frameRate': 30.0},
+          'mandatory': mandatory,
         },
       });
 
@@ -1200,11 +1204,18 @@ class VoiceSessionNotifier extends StateNotifier<VoiceSessionState> {
     }
   }
 
-  Future<void> _stopScreenShare() async {
+  Future<void> applyScreenShareSettings(VoiceSettings settings) async {
+    if (_screenStream == null || _screenSourceId == null) return;
+    final sid = _screenSourceId!;
+    await _stopScreenShare(keepSourceId: true);
+    await startScreenShareWithSource(sid, settings: settings);
+  }
+
+  Future<void> _stopScreenShare({bool keepSourceId = false}) async {
     if (_screenStream == null) return;
-    for (final t in _screenStream!.getTracks()) { try { await t.stop(); } catch (_) {} }
-    try { await _screenStream!.dispose(); } catch (_) {}
+    final stream = _screenStream!;
     _screenStream = null;
+    if (!keepSourceId) _screenSourceId = null;
     state = state.copyWith(isScreenSharing: false);
     for (final bundle in _peers.values) {
       if (bundle.screenTx != null) {
@@ -1212,6 +1223,9 @@ class VoiceSessionNotifier extends StateNotifier<VoiceSessionState> {
       }
     }
     _broadcastVoiceState();
+    for (final t in stream.getTracks()) {
+      try { await t.stop(); } catch (_) {}
+    }
   }
 
   void _broadcastVoiceState() {

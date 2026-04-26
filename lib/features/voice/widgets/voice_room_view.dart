@@ -964,14 +964,10 @@ class _VoiceRoomViewState extends ConsumerState<VoiceRoomView> {
           const SizedBox(width: 10),
           _circleButton(icon: vs.isVideo ? Icons.videocam : Icons.videocam_off, active: !vs.isVideo, activeColor: c.error, c: c, tooltip: vs.isVideo ? 'Выкл. камеру' : 'Вкл. камеру', onTap: notifier.toggleCamera),
           const SizedBox(width: 10),
-          _circleButton(
-            icon: vs.isScreenSharing ? Icons.stop_screen_share : Icons.screen_share_outlined,
-            active: vs.isScreenSharing, activeColor: c.success, c: c,
-            tooltip: vs.isScreenSharing ? 'Остановить трансляцию' : 'Поделиться экраном',
-            onTap: vs.isScreenSharing ? notifier.toggleScreenShare : () async {
-              final source = await ScreenSourcePicker.show(context, c);
-              if (source != null) notifier.startScreenShareWithSource(source.id);
-            },
+          _ScreenShareSplitButton(
+            vs: vs, notifier: notifier, c: c,
+            voiceSettings: ref.watch(voiceSettingsProvider),
+            settingsNotifier: ref.read(voiceSettingsProvider.notifier),
           ),
           const SizedBox(width: 10),
           _pillButton(icon: Icons.call_end, color: c.error, onTap: () {
@@ -1072,4 +1068,189 @@ class _VoiceRoomViewState extends ConsumerState<VoiceRoomView> {
       ),
     );
   }
+}
+
+// ─── Screen Share Split Button ──────────────────────────────────
+
+class _ScreenShareSplitButton extends StatelessWidget {
+  final VoiceSessionState vs;
+  final VoiceSessionNotifier notifier;
+  final ColorSet c;
+  final VoiceSettings voiceSettings;
+  final VoiceSettingsNotifier settingsNotifier;
+
+  const _ScreenShareSplitButton({
+    required this.vs, required this.notifier, required this.c,
+    required this.voiceSettings, required this.settingsNotifier,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final active = vs.isScreenSharing;
+    final bg = active ? c.success : c.surface.withValues(alpha: 0.6);
+    final fg = active ? Colors.white : c.text;
+
+    return Container(
+      height: 44,
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: active ? c.success : c.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: active ? notifier.toggleScreenShare : () async {
+              final source = await ScreenSourcePicker.show(context, c);
+              if (source != null) notifier.startScreenShareWithSource(source.id, settings: voiceSettings);
+            },
+            borderRadius: const BorderRadius.horizontal(left: Radius.circular(22)),
+            child: Tooltip(
+              message: active ? 'Остановить трансляцию' : 'Поделиться экраном',
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(active ? Icons.stop_screen_share : Icons.screen_share_outlined, size: 18, color: fg),
+                    if (active) ...[
+                      const SizedBox(width: 4),
+                      Container(width: 6, height: 6, decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Container(width: 1, height: 20, color: (active ? Colors.white : c.border).withValues(alpha: 0.3)),
+          InkWell(
+            onTap: () => _showShareMenu(context),
+            borderRadius: const BorderRadius.horizontal(right: Radius.circular(22)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Icon(Icons.expand_more, size: 16, color: fg),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  RelativeRect _menuPosition(BuildContext context) {
+    final RenderBox button = context.findRenderObject() as RenderBox;
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    return RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(Offset.zero, ancestor: overlay),
+        button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+  }
+
+  void _showShareMenu(BuildContext context) {
+    final pos = _menuPosition(context);
+    showMenu<String>(
+      context: context, position: pos, color: c.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: c.border)),
+      items: [
+        if (vs.isScreenSharing) ...[
+          PopupMenuItem(value: 'stop', height: 36, child: Row(children: [
+            Icon(Icons.stop, size: 16, color: c.error), const SizedBox(width: 10),
+            Text('Остановить трансляцию', style: TextStyle(fontSize: 13, color: c.error)),
+          ])),
+          PopupMenuItem(value: 'swap', height: 36, child: Row(children: [
+            Icon(Icons.refresh, size: 16, color: c.textSecondary), const SizedBox(width: 10),
+            Text('Сменить источник', style: TextStyle(fontSize: 13, color: c.text)),
+          ])),
+        ] else
+          PopupMenuItem(value: 'start', height: 36, child: Row(children: [
+            Icon(Icons.screen_share_outlined, size: 16, color: c.textSecondary), const SizedBox(width: 10),
+            Text('Поделиться экраном', style: TextStyle(fontSize: 13, color: c.text)),
+          ])),
+        const PopupMenuDivider(),
+        PopupMenuItem(value: 'resolution', height: 36, enabled: false, child: Row(children: [
+          Icon(Icons.aspect_ratio, size: 16, color: c.textSecondary.withValues(alpha: 0.5)), const SizedBox(width: 10),
+          Expanded(child: Text('Разрешение (скоро)', style: TextStyle(fontSize: 13, color: c.textSecondary.withValues(alpha: 0.5)))),
+        ])),
+        PopupMenuItem(value: 'framerate', height: 36, child: Row(children: [
+          Icon(Icons.speed, size: 16, color: c.textSecondary), const SizedBox(width: 10),
+          Expanded(child: Text('Частота кадров', style: TextStyle(fontSize: 13, color: c.text))),
+          Text('${voiceSettings.shareFramerate} fps', style: TextStyle(fontSize: 12, color: c.textSecondary)),
+          const SizedBox(width: 4), Icon(Icons.chevron_right, size: 14, color: c.textSecondary),
+        ])),
+        PopupMenuItem(value: 'surface', height: 36, child: Row(children: [
+          Icon(Icons.monitor, size: 16, color: c.textSecondary), const SizedBox(width: 10),
+          Expanded(child: Text('Источник', style: TextStyle(fontSize: 13, color: c.text))),
+          Text(_surfaceLabel(), style: TextStyle(fontSize: 12, color: c.textSecondary)),
+          const SizedBox(width: 4), Icon(Icons.chevron_right, size: 14, color: c.textSecondary),
+        ])),
+        const PopupMenuDivider(),
+        PopupMenuItem(value: 'sysaudio', height: 36, child: Row(children: [
+          Icon(Icons.volume_up, size: 16, color: c.textSecondary), const SizedBox(width: 10),
+          Expanded(child: Text('Системный звук', style: TextStyle(fontSize: 13, color: c.text))),
+          _pill(voiceSettings.shareSystemAudio),
+        ])),
+        PopupMenuItem(value: 'preview', height: 36, child: Row(children: [
+          Icon(Icons.visibility, size: 16, color: c.textSecondary), const SizedBox(width: 10),
+          Expanded(child: Text('Превью перед показом', style: TextStyle(fontSize: 13, color: c.text))),
+          _pill(voiceSettings.sharePreview),
+        ])),
+      ],
+    ).then((result) {
+      if (result == null) return;
+      switch (result) {
+        case 'stop': notifier.toggleScreenShare();
+        case 'start' || 'swap':
+          ScreenSourcePicker.show(context, c).then((source) {
+            if (source != null) notifier.startScreenShareWithSource(source.id, settings: voiceSettings);
+          });
+        case 'resolution': _showSubMenu(context, pos, ['1080', '720', '480', 'auto'],
+          (o) => o == 'auto' ? 'Авто' : '${o}p', voiceSettings.shareResolution, (v) {
+            settingsNotifier.setShareResolution(v);
+          });
+        case 'framerate': _showSubMenu(context, pos, ['60', '30', '15'],
+          (o) => '$o fps', '${voiceSettings.shareFramerate}', (v) {
+            settingsNotifier.setShareFramerate(int.parse(v));
+            if (vs.isScreenSharing) notifier.applyScreenShareSettings(voiceSettings.copyWith(shareFramerate: int.parse(v)));
+          });
+        case 'surface': _showSubMenu(context, pos, ['auto', 'monitor', 'window', 'browser'],
+          (o) => const {'auto': 'Любой', 'monitor': 'Весь экран', 'window': 'Окно', 'browser': 'Вкладка'}[o]!,
+          voiceSettings.shareSurface, (v) => settingsNotifier.setShareSurface(v));
+        case 'sysaudio': settingsNotifier.setShareSystemAudio(!voiceSettings.shareSystemAudio);
+        case 'preview': settingsNotifier.setSharePreview(!voiceSettings.sharePreview);
+      }
+    });
+  }
+
+  void _showSubMenu(BuildContext context, RelativeRect pos, List<String> options,
+      String Function(String) label, String current, void Function(String) onSelect) {
+    showMenu<String>(
+      context: context, position: pos, color: c.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: c.border)),
+      items: [
+        for (final opt in options)
+          PopupMenuItem(value: opt, height: 36, child: Row(children: [
+            SizedBox(width: 20, child: current == opt ? Icon(Icons.check, size: 16, color: c.accent) : null),
+            const SizedBox(width: 8),
+            Text(label(opt), style: TextStyle(fontSize: 13, color: c.text)),
+          ])),
+      ],
+    ).then((v) { if (v != null) onSelect(v); });
+  }
+
+  Widget _pill(bool on) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+    decoration: BoxDecoration(
+      color: on ? c.success.withValues(alpha: 0.15) : c.surface,
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: on ? c.success.withValues(alpha: 0.4) : c.border),
+    ),
+    child: Text(on ? 'Вкл' : 'Выкл', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: on ? c.success : c.textSecondary)),
+  );
+
+  String _surfaceLabel() => switch (voiceSettings.shareSurface) {
+    'monitor' => 'Весь экран', 'window' => 'Окно', 'browser' => 'Вкладка', _ => 'Любой',
+  };
 }
