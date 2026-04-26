@@ -1,135 +1,138 @@
-# Domain — Desktop App (Flutter)
+# Domain
 
-Десктопный клиент платформы Domain. Windows / macOS / Linux.
+Open-source client for the **Domain** community platform.  
+Build and manage communities with a page constructor, real-time chat, voice calls, and more.
 
-## Сборка
+**[Website](https://do-main.ru)** · **[Report Issue](https://github.com/MKDimon/Domain/issues)**
 
-```bash
-cd app
-flutter pub get
-flutter build windows          # Release
-flutter run -d windows         # Debug
-```
+## About
 
-Версия передаётся через `--dart-define`:
+Domain is a cross-platform application for creating and managing online communities. Each community gets a customizable space with pages, sections, chat rooms, and voice channels — all in one place.
 
-```bash
-flutter build windows --dart-define=APP_VERSION=1.2.0
-```
+### Key Features
 
-## Десктопные фичи
+- **Page Builder** — drag-and-drop constructor with plugin-based sections: wiki, content blocks, products catalog, polls, quizzes, booking, calendar, announcements, and Lua scripting
+- **Real-time Chat** — WebSocket-powered messaging with conversations, threads, typing indicators, read status, and message search
+- **Voice & Video Calls** — WebRTC peer-to-peer calls in voice rooms and 1:1 DMs, with noise suppression
+- **Direct Messages** — private conversations with friend requests and online presence
+- **Community Management** — roles (owner, moderator, member), invites, member lists, action logs
+- **Moderation** — warnings, mutes, bans, appeals, complaint system
+- **Subscriptions** — tiered plans with payment integration
+- **Desktop Integration** — system tray, global hotkey (Ctrl+Shift+D), auto-start, auto-updates
 
-### Single Instance
+### Supported Platforms
 
-Одновременно может работать только одна копия приложения. Реализовано через Named Mutex на уровне Windows runner (`windows/runner/main.cpp`). Если копия уже запущена — вторая активирует окно первой и тихо завершается.
+| Platform | Status |
+|----------|--------|
+| Windows  | Stable |
+| macOS    | Stable |
+| Linux    | Stable |
+| Android  | Beta   |
+| iOS      | Beta   |
 
-### Системный трей
+## Screenshots
 
-При нажатии "X" окно сворачивается в трей (не закрывается). Контекстное меню трея:
-- **Открыть Domain** — показать окно
-- **Выйти** — полностью закрыть приложение
+*Coming soon*
 
-Иконка трея: `windows/runner/resources/app_icon.ico` (копируется рядом с exe при сборке через CMake).
+## Tech Stack
 
-### Автообновления (модель Discord)
+- **Framework**: Flutter (Dart)
+- **State Management**: Riverpod
+- **Routing**: GoRouter with shell architecture
+- **Networking**: Dio (HTTP), WebSocket, WebRTC (flutter_webrtc)
+- **Desktop**: window_manager, tray_manager, launch_at_startup, hotkey_manager
+- **Storage**: flutter_secure_storage, shared_preferences
+- **Scripting**: lua_dardo (Lua sandbox for user scripts)
 
-При запуске приложение проверяет наличие обновлений через `GET /api/v1/app/update`. Если обновление есть — автоматически скачивает, устанавливает и перезапускается. Пользователь видит только короткий splash-экран.
-
-Фоновая проверка каждые 6 часов — если обновление найдено, оно скачивается тихо и применяется при следующем запуске.
-
-### Автозапуск
-
-Приложение добавляется в автозагрузку системы при первом запуске. Управляется через `DesktopService.setAutoStart(bool, prefs)`.
-
-### Глобальная горячая клавиша
-
-**Ctrl+Shift+D** — показать/скрыть окно из любого места в системе.
-
-## Публикация обновления
-
-### 1. Собрать новую версию
-
-```bash
-cd app
-flutter build windows --dart-define=APP_VERSION=1.2.0
-```
-
-Готовые файлы: `build/windows/x64/runner/Release/`
-
-### 2. Упаковать в zip
-
-Заархивировать всё содержимое папки `Release/` в zip. Структура внутри архива — плоская (exe и dll в корне, без вложенной папки):
-
-```
-domain_app.exe
-flutter_windows.dll
-app_icon.ico
-data/
-  ...
-```
-
-### 3. Загрузить zip на сервер
-
-Разместить архив по стабильному URL, например:
-
-```
-https://do-main.ru/releases/domain_app_1.2.0.zip
-```
-
-### 4. Обновить конфиг бэкенда
-
-В `config.json` сервера (или через env-переменные):
-
-**config.json:**
-```json
-{
-  "app_update": {
-    "latest_version": "1.2.0",
-    "download_url": "https://do-main.ru/releases/domain_app_1.2.0.zip",
-    "changelog": "Новые фичи, исправления багов",
-    "required": false
-  }
-}
-```
-
-**Или env-переменные (docker-compose):**
-```yaml
-environment:
-  DOMAIN_APP_UPDATE_VERSION: "1.2.0"
-  DOMAIN_APP_UPDATE_URL: "https://do-main.ru/releases/domain_app_1.2.0.zip"
-  DOMAIN_APP_UPDATE_CHANGELOG: "Новые фичи, исправления багов"
-  DOMAIN_APP_UPDATE_REQUIRED: "false"
-```
-
-### 5. Перезапустить бэкенд
-
-```bash
-docker-compose up -d --no-build server
-```
-
-После этого все клиенты автоматически обнаружат обновление при следующей проверке (при запуске или в фоне каждые 6 часов).
-
-### Параметр `required`
-
-- `false` — обычное обновление, применяется автоматически
-- `true` — критическое обновление, блокирует работу до установки
-
-## Архитектура
+## Architecture
 
 ```
 lib/
-  core/
-    config/       — AppConfig (apiBase, wsBase, appVersion)
-    desktop/      — DesktopService (автозапуск, горячие клавиши)
-    tray/         — TrayService (иконка, меню, close-to-tray)
-    update/       — UpdateGate (splash), UpdateProvider (auto-update)
-    shell/        — AppShell (хедер, навигация, window controls)
-  features/       — 14 фич (auth, chat, community, voice, ...)
+├── core/                   — Foundation layer
+│   ├── api/                  API client (Dio), error handling
+│   ├── auth/                 OAuth (VK, Yandex, Google)
+│   ├── config/               App configuration
+│   ├── desktop/              Tray, hotkeys, auto-start
+│   ├── router/               GoRouter setup
+│   ├── theme/                Dark/light theme, colors
+│   ├── update/               Auto-update (Discord-style)
+│   └── websocket/            WebSocket manager
+├── data/
+│   ├── api/                  23 API modules
+│   └── models/               Data models
+├── features/               — Feature modules
+│   ├── auth/                 Login, register, OAuth, email verification
+│   ├── main/                 Home feed, explore communities
+│   ├── community/            Community pages, settings, navigation
+│   ├── editor/               Page editor, section editors, block editors
+│   ├── content/              Section renderers (wiki, chat, products, etc.)
+│   ├── chat/                 Real-time messaging, composer, bubbles
+│   ├── messages/             Direct messages
+│   ├── voice/                Voice rooms, 1:1 calls, audio settings
+│   ├── profile/              User profile, friends, security, violations
+│   ├── notifications/        Bell widget, notification list
+│   ├── moderation/           Moderation panel
+│   ├── admin/                Platform admin dashboard
+│   ├── billing/              Pricing, billing, upgrade modals
+│   ├── feedback/             User feedback and reports
+│   ├── legal/                Terms, privacy policy
+│   └── script/               Lua sandbox, webapp consent
+├── providers/              — Global Riverpod providers
+└── l10n/                   — Localization (Russian, English)
+```
 
-windows/
-  runner/
-    main.cpp      — Single instance (Named Mutex)
-    resources/
-      app_icon.ico — Иконка приложения и трея
-  CMakeLists.txt  — Копирование иконки в build output
+## Building
+
+### Prerequisites
+
+- Flutter SDK 3.11+
+- Platform-specific toolchain (Visual Studio for Windows, Xcode for macOS/iOS)
+
+### Development
+
+```bash
+flutter pub get
+flutter run -d windows    # or macos, linux, chrome
+```
+
+### Release Build
+
+```bash
+flutter build windows --release
+flutter build apk --release
+flutter build macos --release
+```
+
+Build output: `build/windows/x64/runner/Release/`
+
+### Note on Private Dependencies
+
+The open-source release excludes the proprietary `domain_audio` plugin (audio processing with PCM gain control, noise gate, and voice activity detection). The app builds and runs without it — voice calls work via standard WebRTC, but without the custom audio pipeline.
+
+## Contributing
+
+Contributions are welcome! Please open an issue first to discuss what you'd like to change.
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/my-feature`)
+3. Commit your changes
+4. Push to the branch
+5. Open a Pull Request
+
+## Code Signing
+
+This project uses [SignPath Foundation](https://signpath.org) for code signing.
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE).
+
+```
+Copyright 2025 Domain
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
 ```
